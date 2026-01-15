@@ -16,39 +16,43 @@ namespace StreamVideo_Client.WinForms
         }
 
         private async void btnLogin_Click(object sender, EventArgs e)
+{
+    try
+    {
+        btnLogin.Enabled = false;
+
+        string ip = txtIP.Text.Trim();
+        int port = int.Parse(txtPort.Text.Trim());
+        string user = txtUser.Text.Trim();
+        string pass = txtPass.Text.Trim();
+
+        _client = new TcpClientManager();
+        await _client.KetNoiAsync(ip, port);
+
+        // Khai báo biến ketQua ở đây
+        LoginResponseDTO ketQua = await _client.DangNhapAsync(user, pass);
+
+        MessageBox.Show(ketQua.ThongBao);
+
+        if (ketQua.ThanhCong)
         {
-            try
-            {
-                btnLogin.Enabled = false;
-
-                string ip = txtIP.Text.Trim();
-                int port = int.Parse(txtPort.Text.Trim());
-                string user = txtUser.Text.Trim();
-                string pass = txtPass.Text.Trim();
-
-                _client = new TcpClientManager();
-
-                await _client.KetNoiAsync(ip, port);
-
-                LoginResponseDTO ketQua =
-                    await _client.DangNhapAsync(user, pass);
-
-                MessageBox.Show(ketQua.ThongBao);
-
-                if (ketQua.ThanhCong)
-                {
-                    MessageBox.Show("Đăng nhập thành công!");
-                    // Sau này mở form stream ở đây
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Lỗi đăng nhập: " + ex.Message);
-            }
-            finally
-            {
-                btnLogin.Enabled = true;
-            }
+            // Mở form stream
+            // Lưu ý: Đảm bảo bạn đã sửa lỗi FormStream bên dưới trước
+            FormStream frm = new FormStream(_client); 
+            this.Hide();
+            frm.ShowDialog();
+            this.Close();
         }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show("Lỗi: " + ex.Message);
+    }
+    finally
+    {
+        btnLogin.Enabled = true;
+    }
+}
+
     }
 }
