@@ -1,5 +1,5 @@
-﻿using StreamVideo_Client.Network;
-using StreamVideo_Client.DTO;
+﻿using StreamVideo_Client.DTO;
+using StreamVideo_Client.Network;
 using System;
 using System.Windows.Forms;
 
@@ -12,6 +12,7 @@ namespace StreamVideo_Client.WinForms
         public FormConnect()
         {
             InitializeComponent();
+            Text = "Client - Đăng nhập hệ thống";
         }
 
         private async void btnLogin_Click(object sender, EventArgs e)
@@ -26,6 +27,7 @@ namespace StreamVideo_Client.WinForms
                 string pass = txtPass.Text.Trim();
 
                 _client = new TcpClientManager();
+
                 await _client.KetNoiAsync(ip, port);
 
                 LoginResponseDTO ketQua =
@@ -35,9 +37,8 @@ namespace StreamVideo_Client.WinForms
 
                 if (ketQua.ThanhCong)
                 {
-                    Form1 frm = new Form1();
-                    frm.Show();
-                    this.Hide();
+                    MessageBox.Show("Đăng nhập thành công!");
+                    // Sau này mở form stream ở đây
                 }
             }
             catch (Exception ex)
@@ -48,11 +49,6 @@ namespace StreamVideo_Client.WinForms
             {
                 btnLogin.Enabled = true;
             }
-        }
-
-        private void textBox3_TextChanged(object sender, EventArgs e)
-        {
-
         }
     }
 }
