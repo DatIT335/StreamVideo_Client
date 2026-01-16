@@ -1,4 +1,5 @@
 ﻿using StreamVideo_Client.DTO;
+using StreamVideo_Client.Common; // Đảm bảo đã có file AesHelper.cs
 using System;
 using System.IO;
 using System.Net.Sockets;
@@ -6,7 +7,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Net.Security;
-using NAudio.Wave; // Thư viện âm thanh
+using NAudio.Wave;
+using System.Diagnostics; // Thêm cái này để ghi Debug log
 
 namespace StreamVideo_Client.Network
 {
@@ -18,14 +20,12 @@ namespace StreamVideo_Client.Network
         private BinaryWriter _writer;
         private Thread _listenThread;
 
-        // Sự kiện Video
         public event Action<byte[]> OnVideoFrameReceived;
 
-        // Xử lý Âm thanh
+        // Audio
         private BufferedWaveProvider _waveProvider;
         private WaveOutEvent _waveOut;
 
-        // Biến Login
         private AutoResetEvent _loginWaitHandle = new AutoResetEvent(false);
         private bool _lastLoginResult = false;
 
@@ -36,26 +36,29 @@ namespace StreamVideo_Client.Network
                 _client = new TcpClient();
                 _client.Connect(ip, port);
 
-                // Bypass SSL check
+                // Bỏ qua check SSL (Dùng cho Self-Signed Certificate)
                 _sslStream = new SslStream(_client.GetStream(), false, (s, c, ch, e) => true);
                 _sslStream.AuthenticateAsClient("StreamServer");
 
                 _reader = new BinaryReader(_sslStream);
                 _writer = new BinaryWriter(_sslStream);
 
-                // --- CẤU HÌNH LOA ---
+                // Setup Loa (Speaker)
                 _waveProvider = new BufferedWaveProvider(new WaveFormat(44100, 1));
                 _waveOut = new WaveOutEvent();
                 _waveOut.Init(_waveProvider);
                 _waveOut.Play();
-                // ---------------------
 
                 _listenThread = new Thread(ListenLoop);
                 _listenThread.IsBackground = true;
                 _listenThread.Start();
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Lỗi kết nối: " + ex.Message);
+                return false;
+            }
         }
 
         private void ListenLoop()
@@ -64,25 +67,36 @@ namespace StreamVideo_Client.Network
             {
                 while (_client.Connected)
                 {
+                    // Đọc Header gói tin
                     int length = _reader.ReadInt32();
                     byte type = _reader.ReadByte();
                     byte[] payload = _reader.ReadBytes(length);
 
-                    if (type == 1) // Login Response
+                    if (type == 1) // LOGIN RESPONSE
                     {
                         string json = Encoding.UTF8.GetString(payload);
                         var res = JsonSerializer.Deserialize<LoginResponseDTO>(json);
                         _lastLoginResult = res.ThanhCong;
                         _loginWaitHandle.Set();
                     }
-                    else if (type == 2) // VIDEO
+                    else if (type == 2) // VIDEO FRAME
                     {
-                        // Gọi sự kiện để FormStream hiển thị
-                        OnVideoFrameReceived?.Invoke(payload);
+                        try
+                        {
+                            // --- QUAN TRỌNG: GIẢI MÃ AES ---
+                            byte[] decryptedImage = AesHelper.Decrypt(payload);
+
+                            // Gửi dữ liệu ảnh sạch ra Form để hiển thị
+                            OnVideoFrameReceived?.Invoke(decryptedImage);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Nếu nhảy vào đây nghĩa là Key/IV của Server và Client không khớp nhau!
+                            Debug.WriteLine("Lỗi giải mã Video: " + ex.Message);
+                        }
                     }
-                    else if (type == 3) // AUDIO
+                    else if (type == 3) // AUDIO STREAM
                     {
-                        // Đẩy vào loa
                         if (_waveProvider != null)
                         {
                             _waveProvider.AddSamples(payload, 0, payload.Length);
@@ -99,12 +113,16 @@ namespace StreamVideo_Client.Network
         public bool Login(string user, string pass)
         {
             if (_client == null || !_client.Connected) return false;
+
             var req = new BaseRequestDTO
             {
                 Type = RequestType.LOGIN,
                 Payload = JsonSerializer.Serialize(new LoginRequestDTO { TenDangNhap = user, MatKhau = pass })
             };
+
             GuiDuLieu(1, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(req)));
+
+            // Chờ phản hồi tối đa 3 giây
             _loginWaitHandle.WaitOne(3000);
             return _lastLoginResult;
         }

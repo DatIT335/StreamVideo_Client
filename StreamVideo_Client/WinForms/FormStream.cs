@@ -1,4 +1,5 @@
-﻿using StreamVideo_Client.Network;
+﻿using StreamVideo_Cliennt.Network;
+using StreamVideo_Client.Network;
 using System;
 using System.Drawing;
 using System.IO;
@@ -28,8 +29,10 @@ namespace StreamVideo_Client.WinForms
         private void InitUI()
         {
             // Tạo thư mục lưu video
-            string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            _folderLuu = Path.Combine(documents, "StreamRecordings", DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss"));
+            // Mới: Lưu vào thư mục chứa file chạy (.exe) của Client
+            string folderGoc = Application.StartupPath;
+            // Tạo thư mục con "Recordings"
+            _folderLuu = Path.Combine(folderGoc, "Recordings", DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss"));
             Directory.CreateDirectory(_folderLuu);
 
             // Cấu hình Form
@@ -72,24 +75,42 @@ namespace StreamVideo_Client.WinForms
         {
             try
             {
+                // Nếu đang ở thread khác thì gọi về thread UI
                 if (InvokeRequired) { Invoke(new Action<byte[]>(HienThiAnh), imgData); return; }
 
-                using (MemoryStream ms = new MemoryStream(imgData))
-                {
-                    Image newImg = Image.FromStream(ms);
-                    Image oldImg = _pbServerScreen.Image;
-                    _pbServerScreen.Image = newImg;
-                    if (oldImg != null) oldImg.Dispose();
-                }
+                // --- BƯỚC 1: GIẢI MÃ DỮ LIỆU ---
+                // Dữ liệu nhận về (imgData) đang bị mã hóa, phải giải mã ra mới xem được
+                byte[] decryptedData = SecurityHelper.Decrypt(imgData);
 
-                // LƯU HÌNH ẢNH
-                if (_dangGhiHinh)
+                // Kiểm tra giải mã thành công (khác null)
+                if (decryptedData != null)
                 {
-                    string filename = Path.Combine(_folderLuu, $"Frame_{DateTime.Now.Ticks}.jpg");
-                    File.WriteAllBytesAsync(filename, imgData);
+                    // --- BƯỚC 2: HIỂN THỊ LÊN MÀN HÌNH ---
+                    using (MemoryStream ms = new MemoryStream(decryptedData))
+                    {
+                        Image newImg = Image.FromStream(ms);
+
+                        // Xử lý ảnh cũ để tránh đầy bộ nhớ
+                        Image oldImg = _pbServerScreen.Image;
+                        _pbServerScreen.Image = newImg;
+                        if (oldImg != null) oldImg.Dispose();
+                    }
+
+                    // --- BƯỚC 3: LƯU HÌNH ẢNH (ĐÃ GIẢI MÃ) ---
+                    if (_dangGhiHinh)
+                    {
+                        string filename = Path.Combine(_folderLuu, $"Frame_{DateTime.Now.Ticks}.jpg");
+
+                        // Lưu cái mảng byte ĐÃ GIẢI MÃ (decryptedData) thì mở file mới xem được
+                        // Đừng lưu imgData gốc vì nó là rác mã hóa
+                        File.WriteAllBytesAsync(filename, decryptedData);
+                    }
                 }
             }
-            catch { }
+            catch
+            {
+                // Có thể bỏ qua lỗi nếu giải mã sai gói tin hoặc form đang đóng
+            }
         }
 
         private void BtnEnd_Click(object sender, EventArgs e)
